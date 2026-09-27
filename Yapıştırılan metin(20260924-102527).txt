@@ -1,0 +1,316 @@
+############################################################
+# TCGA-THCA miRNA (papillary NOS & follicular variant hedefli)
+# - TP (01) ve NT (11/21/22) tutulur
+# - Hasta + tip (TP/NT) ba????na 1 ??rnek (libsize en b??y??k)
+# - Alt tip filtresi iste??e ba??l?? (varsay??lan: KAPALI)
+# - ????kt??lar:
+#   * THCA_miRNA_unique_patients_only.csv           (Sample + label + features)
+#   * THCA_miRNA_unique_patients_only_NUM.csv       (label + numeric-only features)
+#   * (opsiyonel) logRPM varyantlar??
+############################################################
+options(stringsAsFactors = FALSE)
+
+#------------------ Yard??mc??lar ------------------#
+msg  <- function(...) cat("[INFO] ", paste0(...), "\n", sep = "")
+warn <- function(...) cat("[WARN] ", paste0(...), "\n", sep = "")
+fail <- function(...) stop(paste0(...), call. = FALSE)
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
+install_if_missing <- function(pkgs) {
+  to_install <- pkgs[!(pkgs %in% rownames(installed.packages()))]
+  if (length(to_install)) install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+bioc_install_if_missing <- function(pkgs) {
+  if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager", repos = "https://cloud.r-project.org")
+  for (p in pkgs) if (!requireNamespace(p, quietly = TRUE))
+    BiocManager::install(p, ask = FALSE, update = FALSE)
+}
+safe_require <- function(pkg) suppressPackageStartupMessages(require(pkg, character.only = TRUE))
+
+# expr-meta hizalama
+sync_expr_meta <- function(expr, meta, stop_if_empty = TRUE, step = "unknown") {
+  colnames(expr) <- as.character(colnames(expr))
+  meta$barcode   <- as.character(meta$barcode)
+  meta <- meta[!is.na(meta$barcode), , drop = FALSE]
+  common <- intersect(colnames(expr), meta$barcode)
+  if (length(common) == 0L) {
+    m <- paste0("[SYNC] ortak barkod yok (", step, "). expr head: ",
+                paste(utils::head(colnames(expr), 5), collapse=" | "),
+                " | meta head: ",
+                paste(utils::head(meta$barcode, 5), collapse=" | "))
+    if (stop_if_empty) stop(m, call. = FALSE) else warning(m, call. = FALSE)
+  }
+  expr2 <- expr[, common, drop = FALSE]
+  idx   <- match(common, meta$barcode)
+  meta2 <- meta[idx, , drop = FALSE]
+  dup <- duplicated(colnames(expr2))
+  if (any(dup)) {
+    expr2 <- expr2[, !dup, drop = FALSE]
+    meta2 <- meta2[match(colnames(expr2), meta2$barcode), , drop = FALSE]
+  }
+  list(expr = expr2, meta = meta2)
+}
+
+#------------------ Paketler ------------------#
+install_if_missing(c("dplyr","stringr","tibble","readr","purrr"))
+bioc_install_if_missing(c("TCGAbiolinks","SummarizedExperiment"))
+invisible(lapply(c("dplyr","stringr","tibble","readr","purrr",
+                   "TCGAbiolinks","SummarizedExperiment"),
+                 safe_require))
+
+#------------------ Parametreler ------------------#
+project_id <- "TCGA-THCA"
+
+# Alt tip filtresi: veri kayb??n?? ??nlemek i??in kapal?? ba??lat??yoruz.
+# Papillary NOS ve follicular variant'a daraltmak istersen TRUE yap.
+apply_subtype_filter <- FALSE
+
+wanted_histos <- tolower(c("papillary adenocarcinoma, nos",
+                           "papillary carcinoma, follicular variant"))
+
+# ????k???? dosya adlar??
+out_with_sample_counts <- "THCA_miRNA_unique_patients_only.csv"
+out_with_sample_logrpm <- "THCA_miRNA_unique_patients_only_logRPM.csv"
+out_NUM_counts         <- "THCA_miRNA_unique_patients_only_NUM.csv"
+out_NUM_logrpm         <- "THCA_miRNA_unique_patients_only_NUM_logRPM.csv"
+
+#------------------ Sorgu & ??ndirme ------------------#
+msg("Sorgu hazirlaniyor...")
+query <- tryCatch({
+  GDCquery(project = project_id,
+           data.category = "Transcriptome Profiling",
+           data.type = "miRNA Expression Quantification",
+           sample.type = c("Primary Tumor","Solid Tissue Normal"))
+}, error = function(e) fail("GDCquery hatasi: ", e$message))
+
+msg("Indirme (GDCdownload)...")
+tryCatch(GDCdownload(query), error = function(e) fail("GDCdownload hatasi: ", e$message))
+
+msg("GDCprepare...")
+se <- tryCatch(GDCprepare(query), error = function(e) fail("GDCprepare hatasi: ", e$message))
+msg("GDCprepare sinifi: ", paste(class(se), collapse=", "))
+
+#------------------ ??fade Matrisi + Meta ------------------#
+get_expr_and_meta <- function(se) {
+  if (inherits(se, "SummarizedExperiment")) {
+    msg("SE akis.")
+    col_anno <- as.data.frame(SummarizedExperiment::colData(se))
+    if (!"barcode" %in% names(col_anno)) {
+      if (!is.null(rownames(col_anno))) col_anno$barcode <- rownames(col_anno) else fail("colData barkod yok.")
+    }
+    col_anno$patient <- substr(col_anno$barcode, 1, 12)
+    a_names <- SummarizedExperiment::assayNames(se)
+    assay_use <- if ("read_count" %in% a_names) "read_count" else a_names[1]
+    expr <- SummarizedExperiment::assay(se, assay_use)
+    if ("shortLetterCode" %in% names(col_anno)) {
+      code <- col_anno$shortLetterCode
+      code[is.na(code) & grepl("Primary Tumor", col_anno$sample_type %||% "")] <- "TP"
+      code[is.na(code) & grepl("Solid Tissue Normal", col_anno$sample_type %||% "")] <- "NT"
+      col_anno$sample_type_code <- code
+    } else {
+      st <- col_anno$sample_type %||% ""
+      col_anno$sample_type_code <- ifelse(grepl("Primary Tumor", st), "TP",
+                                          ifelse(grepl("Solid Tissue Normal", st), "NT", NA))
+    }
+    return(list(expr = expr, meta = col_anno))
+  }
+  if (is.data.frame(se)) {
+    msg("data.frame akis (miRNA tablo).")
+    if (!"miRNA_ID" %in% names(se)) fail("'miRNA_ID' sutunu yok.")
+    expr_df <- se
+    rownames(expr_df) <- expr_df$miRNA_ID
+    expr_df$miRNA_ID <- NULL
+    read_cols <- grep("^read_count_", names(expr_df), value = TRUE)
+    if (!length(read_cols)) {
+      warn("read_count_ bulunamadi; sayisal sutunlar deneniyor.")
+      read_cols <- names(expr_df)[sapply(expr_df, is.numeric)]
+      if (!length(read_cols)) fail("Sayisal sutun yok.")
+    }
+    expr <- as.matrix(expr_df[, read_cols, drop = FALSE])
+    barcodes <- sub("^read_count_", "", colnames(expr), perl = TRUE)
+    barcodes[!grepl("^TCGA-", barcodes)] <- colnames(expr)[!grepl("^TCGA-", barcodes)]
+    colnames(expr) <- barcodes
+    patients <- substr(barcodes, 1, 12)
+    scode <- stringr::str_extract(barcodes, "-(\\d\\d)[A-Z]")
+    scode <- ifelse(is.na(scode), NA_character_, substr(scode, 2, 3))
+    stype <- dplyr::case_when(
+      scode == "01" ~ "TP",
+      scode %in% c("11","21","22") ~ "NT",  # 21/22 normal varyantlari
+      TRUE ~ NA_character_
+    )
+    meta <- tibble::tibble(barcode = barcodes, patient = patients, sample_type_code = stype)
+    keep <- !is.na(meta$sample_type_code) & meta$sample_type_code %in% c("TP","NT")
+    if (!any(keep)) fail("TP/NT ornek bulunamadi.")
+    meta <- meta[keep, , drop = FALSE]
+    expr <- expr[, meta$barcode, drop = FALSE]
+    return(list(expr = expr, meta = meta))
+  }
+  fail("GDCprepare cikti sinifi taninamadi: ", paste(class(se), collapse=", "))
+}
+
+tmp <- get_expr_and_meta(se)
+expr <- tmp$expr; meta <- tmp$meta
+syn <- sync_expr_meta(expr, meta, step = "initial"); expr <- syn$expr; meta <- syn$meta
+msg("Baslangic ornek sayisi: ", ncol(expr))
+
+#------------------ Alt Tip (opsiyonel ve guvenli) ------------------#
+msg("Subtype filtresi: ", ifelse(apply_subtype_filter, "ACIK", "KAPALI"))
+if (apply_subtype_filter) {
+  get_keep_patients_by_subtype <- function() {
+    sub <- tryCatch(TCGAquery_subtype("THCA"), error = function(e) NULL)
+    keep_patients <- character(0)
+    if (!is.null(sub)) {
+      hist_cols <- names(sub)[grepl("hist|type", tolower(names(sub)))]
+      if (length(hist_cols)) {
+        wanted <- paste(wanted_histos, collapse="|")
+        row_has <- apply(sub[, hist_cols, drop = FALSE], 1, function(r)
+          any(stringr::str_detect(tolower(as.character(r)), wanted)))
+        keep_patients <- unique(sub$patient[row_has])
+      }
+    }
+    if (!length(keep_patients)) {
+      clin <- tryCatch(GDCquery_clinic(project = project_id, type = "clinical"), error = function(e) NULL)
+      if (!is.null(clin)) {
+        idcol <- intersect(c("submitter_id","case_submitter_id","patient"), names(clin))
+        if (length(idcol)) {
+          clin$submitter_id <- clin[[idcol[1]]]
+          txtcols <- names(clin)[sapply(clin, function(x) is.character(x) || is.factor(x))]
+          txtcols <- txtcols[grepl("diagnos|hist|type|morph", tolower(txtcols))]
+          if (length(txtcols)) {
+            wanted <- paste(wanted_histos, collapse="|")
+            any_hit <- apply(clin[, txtcols, drop = FALSE], 1, function(r)
+              any(stringr::str_detect(tolower(paste(r, collapse=" ")), wanted)))
+            keep_patients <- unique(clin$submitter_id[any_hit])
+          }
+        }
+      }
+    }
+    keep_patients
+  }
+  
+  keep_patients <- get_keep_patients_by_subtype()
+  msg("Subtype ile secilen hasta sayisi: ", length(keep_patients))
+  if (length(keep_patients)) {
+    keep <- meta$patient %in% keep_patients
+    if (any(keep)) {
+      meta <- meta[keep, , drop = FALSE]
+      expr <- expr[, meta$barcode, drop = FALSE]
+    } else {
+      warn("Subtype filtresi eslesme bulamadi; atlandi.")
+    }
+  } else {
+    warn("Subtype filtresi bos; atlandi.")
+  }
+} else {
+  msg("Subtype filtresi devre disi.")
+}
+syn <- sync_expr_meta(expr, meta, step = "post_subtype"); expr <- syn$expr; meta <- syn$meta
+msg("post_subtype -> expr dim: ", paste(dim(expr), collapse=" x "), " | meta n: ", nrow(meta))
+
+#------------------ Duplike (hasta+tip) ------------------#
+msg("Duplike (hasta+tip, libsize buyuk)...")
+libsize <- colSums(expr)
+meta$libsize <- libsize[match(meta$barcode, colnames(expr))]
+
+meta_step1 <- meta |>
+  dplyr::group_by(patient, sample_type_code) |>
+  dplyr::slice_max(order_by = libsize, n = 1, with_ties = FALSE) |>
+  dplyr::ungroup()
+
+if (nrow(meta_step1) == 0) fail("Duplike sonrasi hic ornek kalmadi.")
+
+expr <- expr[, meta_step1$barcode, drop = FALSE]
+syn <- sync_expr_meta(expr, meta_step1, step = "post_dedup_step1")
+expr <- syn$expr; meta_step1 <- syn$meta
+msg("post_dedup_step1 -> expr dim: ", paste(dim(expr), collapse=" x "))
+
+#------------------ Label ekle (TP=1, NT=0) ------------------#
+meta_pair <- meta_step1 |>
+  dplyr::mutate(label = dplyr::case_when(
+    sample_type_code %in% c("TP","Primary Tumor") ~ 1L,
+    sample_type_code %in% c("NT","Solid Tissue Normal") ~ 0L,
+    TRUE ~ NA_integer_
+  ))
+
+keep_ok <- !is.na(meta_pair$label)
+if (!any(keep_ok)) fail("Label atanamadi; ornek tipi cozumlenemedi.")
+meta_pair <- meta_pair[keep_ok, , drop = FALSE]
+expr <- expr[, meta_pair$barcode, drop = FALSE]
+syn <- sync_expr_meta(expr, meta_pair, step = "post_label_pair")
+expr <- syn$expr; meta_pair <- syn$meta
+
+lab_tab <- table(meta_pair$label, useNA = "ifany")
+msg("Label dagilimi (1=TP, 0=NT): ", paste(names(lab_tab), lab_tab, collapse="  "))
+
+if (length(unique(meta_pair$label)) < 2) {
+  fail("Tek sinif olustu (sadece 1 veya sadece 0). Subtype filtresini KAPATIP yeniden deneyin.")
+}
+
+#------------------ ML tablolarini yaz ------------------#
+# 1) Referans: Sample + label + features (ham sayim)
+ml_df_counts <- t(expr) |>
+  as.data.frame(check.names = FALSE) |>
+  tibble::rownames_to_column("Sample") |>
+  dplyr::left_join(meta_pair |> dplyr::select(barcode, label),
+                   by = c("Sample" = "barcode")) |>
+  dplyr::relocate(Sample, label)
+
+if (nrow(ml_df_counts) == 0) fail("ml_df_counts bos; yazma iptal.")
+if (any(is.na(ml_df_counts$label))) fail("ml_df_counts label NA; yazma iptal.")
+
+readr::write_csv(ml_df_counts, out_with_sample_counts)
+msg("Yazildi: ", out_with_sample_counts)
+
+# 2) Numeric-only: label + numeric (Sample yok)
+num_df_counts <- ml_df_counts |>
+  dplyr::select(-Sample) |>
+  dplyr::relocate(label)
+
+feat_cols <- setdiff(names(num_df_counts), "label")
+if (length(feat_cols) == 0) fail("Feature kolonu yok; yazma iptal.")
+
+# Zaten numeric ama guvenlik icin donustur
+num_df_counts[feat_cols] <- lapply(num_df_counts[feat_cols], function(x) as.numeric(x))
+num_df_counts$label <- as.integer(num_df_counts$label)
+num_df_counts[feat_cols] <- lapply(num_df_counts[feat_cols], function(x){ x[!is.finite(x)] <- 0; x[is.na(x)] <- 0; x })
+
+# Son kontrol: iki sinif var mi?
+lab_tab2 <- table(num_df_counts$label, useNA = "ifany")
+msg("NUM label dagilimi: ", paste(names(lab_tab2), lab_tab2, collapse="  "))
+if (length(unique(num_df_counts$label)) < 2) fail("NUM dosyasinda tek sinif; yazma iptal.")
+
+readr::write_csv(num_df_counts, out_NUM_counts)
+msg("Yazildi (NUM): ", out_NUM_counts)
+
+#------------------ (Opsiyonel) log1p + RPM ------------------#
+do_logrpm <- FALSE  # isterse TRUE yap
+if (do_logrpm) {
+  counts_mat <- as.matrix(ml_df_counts[, setdiff(names(ml_df_counts), c("Sample","label"))])
+  storage.mode(counts_mat) <- "numeric"
+  libsize_vec <- rowSums(counts_mat)
+  rpm <- sweep(counts_mat, 1, libsize_vec/1e6, "/"); rpm[!is.finite(rpm)] <- 0
+  log_rpm <- log1p(rpm)
+  
+  ml_df_logrpm <- cbind(ml_df_counts[c("Sample","label")], as.data.frame(log_rpm, check.names = FALSE))
+  readr::write_csv(ml_df_logrpm, out_with_sample_logrpm)
+  msg("Yazildi: ", out_with_sample_logrpm)
+  
+  num_df_logrpm <- ml_df_logrpm |>
+    dplyr::select(-Sample) |>
+    dplyr::relocate(label)
+  feat_cols2 <- setdiff(names(num_df_logrpm), "label")
+  num_df_logrpm[feat_cols2] <- lapply(num_df_logrpm[feat_cols2], function(x) as.numeric(x))
+  num_df_logrpm$label <- as.integer(num_df_logrpm$label)
+  num_df_logrpm[feat_cols2] <- lapply(num_df_logrpm[feat_cols2], function(x){ x[!is.finite(x)] <- 0; x[is.na(x)] <- 0; x })
+  readr::write_csv(num_df_logrpm, out_NUM_logrpm)
+  msg("Yazildi (NUM_logRPM): ", out_NUM_logrpm)
+}
+
+msg("Tamamlandi. Cikis dosyalari calistigin dizine yazildi: ")
+msg(" - ", out_with_sample_counts)
+msg(" - ", out_NUM_counts)
+if (exists("do_logrpm") && isTRUE(do_logrpm)) {
+  msg(" - ", out_with_sample_logrpm)
+  msg(" - ", out_NUM_logrpm)
+}
