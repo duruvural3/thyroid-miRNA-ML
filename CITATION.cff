@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+title: "TCGA-THCA miRNA Machine-Learning Analysis"
+type: software
+version: 1.0.0
+license: MIT
+
+authors:
+  - family-names: "Vural"
+    given-names: "Duru"
+  - family-names: "Köroğlu"
+    given-names: "Seyit Metin"
+  - family-names: "İzzetoğlu"
+    given-names: "Savaş"
+
+abstract: >-
+  Computational workflow for TCGA-THCA miRNA expression analysis, including
+  data preprocessing, feature selection, class-imbalance handling,
+  patient-grouped nested cross-validation, machine-learning model evaluation,
+  TOPSIS ranking, feature-stability analysis, and derivation of a 30-miRNA
+  candidate biomarker panel for thyroid cancer.
