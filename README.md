@@ -42,6 +42,36 @@ The model achieved:
 - Recall: 0.994
 - ROC-AUC: 0.997
 - TOPSIS score: 0.951
+## Software environment
+
+The computational environment corresponding to the analysis reported in the manuscript is summarized below.
+
+### Python environment
+
+- Python 3.9.23
+- NumPy 2.0.2
+- pandas 2.3.1
+- scikit-learn 1.6.1
+- SciPy 1.13.1
+- imbalanced-learn 0.12.4
+- matplotlib 3.9.4
+- openpyxl 3.1.5
+- mrmr-selection 0.2.8
+
+The Python environment can be recreated using the `environment.yml` file provided in the root directory of this repository.
+
+### R environment
+
+- R 4.5.1
+- TCGAbiolinks 2.36.0
+- SummarizedExperiment 1.38.1
+- dplyr 1.1.4
+- stringr 1.5.2
+- tibble 3.3.0
+- readr 2.1.5
+- purrr 1.1.0
+
+The R script used for TCGA-THCA data acquisition and preprocessing is available in the `R/` directory.
 
 ## Repository structure
 
