@@ -1,15 +1,3 @@
-############################################################
-# TCGA-THCA miRNA (papillary NOS & follicular variant hedefli)
-# - TP (01) ve NT (11/21/22) tutulur
-# - Hasta + tip (TP/NT) ba????na 1 ??rnek (libsize en b??y??k)
-# - Alt tip filtresi iste??e ba??l?? (varsay??lan: KAPALI)
-# - ????kt??lar:
-#   * THCA_miRNA_unique_patients_only.csv           (Sample + label + features)
-#   * THCA_miRNA_unique_patients_only_NUM.csv       (label + numeric-only features)
-#   * (opsiyonel) logRPM varyantlar??
-############################################################
-options(stringsAsFactors = FALSE)
-
 #------------------ Yard??mc??lar ------------------#
 msg  <- function(...) cat("[INFO] ", paste0(...), "\n", sep = "")
 warn <- function(...) cat("[WARN] ", paste0(...), "\n", sep = "")
@@ -62,12 +50,6 @@ invisible(lapply(c("dplyr","stringr","tibble","readr","purrr",
 #------------------ Parametreler ------------------#
 project_id <- "TCGA-THCA"
 
-# Alt tip filtresi: veri kayb??n?? ??nlemek i??in kapal?? ba??lat??yoruz.
-# Papillary NOS ve follicular variant'a daraltmak istersen TRUE yap.
-apply_subtype_filter <- FALSE
-
-wanted_histos <- tolower(c("papillary adenocarcinoma, nos",
-                           "papillary carcinoma, follicular variant"))
 
 # ????k???? dosya adlar??
 out_with_sample_counts <- "THCA_miRNA_unique_patients_only.csv"
@@ -150,63 +132,15 @@ get_expr_and_meta <- function(se) {
 }
 
 tmp <- get_expr_and_meta(se)
-expr <- tmp$expr; meta <- tmp$meta
-syn <- sync_expr_meta(expr, meta, step = "initial"); expr <- syn$expr; meta <- syn$meta
-msg("Baslangic ornek sayisi: ", ncol(expr))
+expr <- tmp$expr
+meta <- tmp$meta
 
-#------------------ Alt Tip (opsiyonel ve guvenli) ------------------#
-msg("Subtype filtresi: ", ifelse(apply_subtype_filter, "ACIK", "KAPALI"))
-if (apply_subtype_filter) {
-  get_keep_patients_by_subtype <- function() {
-    sub <- tryCatch(TCGAquery_subtype("THCA"), error = function(e) NULL)
-    keep_patients <- character(0)
-    if (!is.null(sub)) {
-      hist_cols <- names(sub)[grepl("hist|type", tolower(names(sub)))]
-      if (length(hist_cols)) {
-        wanted <- paste(wanted_histos, collapse="|")
-        row_has <- apply(sub[, hist_cols, drop = FALSE], 1, function(r)
-          any(stringr::str_detect(tolower(as.character(r)), wanted)))
-        keep_patients <- unique(sub$patient[row_has])
-      }
-    }
-    if (!length(keep_patients)) {
-      clin <- tryCatch(GDCquery_clinic(project = project_id, type = "clinical"), error = function(e) NULL)
-      if (!is.null(clin)) {
-        idcol <- intersect(c("submitter_id","case_submitter_id","patient"), names(clin))
-        if (length(idcol)) {
-          clin$submitter_id <- clin[[idcol[1]]]
-          txtcols <- names(clin)[sapply(clin, function(x) is.character(x) || is.factor(x))]
-          txtcols <- txtcols[grepl("diagnos|hist|type|morph", tolower(txtcols))]
-          if (length(txtcols)) {
-            wanted <- paste(wanted_histos, collapse="|")
-            any_hit <- apply(clin[, txtcols, drop = FALSE], 1, function(r)
-              any(stringr::str_detect(tolower(paste(r, collapse=" ")), wanted)))
-            keep_patients <- unique(clin$submitter_id[any_hit])
-          }
-        }
-      }
-    }
-    keep_patients
-  }
-  
-  keep_patients <- get_keep_patients_by_subtype()
-  msg("Subtype ile secilen hasta sayisi: ", length(keep_patients))
-  if (length(keep_patients)) {
-    keep <- meta$patient %in% keep_patients
-    if (any(keep)) {
-      meta <- meta[keep, , drop = FALSE]
-      expr <- expr[, meta$barcode, drop = FALSE]
-    } else {
-      warn("Subtype filtresi eslesme bulamadi; atlandi.")
-    }
-  } else {
-    warn("Subtype filtresi bos; atlandi.")
-  }
-} else {
-  msg("Subtype filtresi devre disi.")
-}
-syn <- sync_expr_meta(expr, meta, step = "post_subtype"); expr <- syn$expr; meta <- syn$meta
-msg("post_subtype -> expr dim: ", paste(dim(expr), collapse=" x "), " | meta n: ", nrow(meta))
+syn <- sync_expr_meta(expr, meta, step = "initial")
+expr <- syn$expr
+meta <- syn$meta
+
+msg("Baslangic ornek sayisi: ", ncol(expr))
+#---------------------------------------------------------#
 
 #------------------ Duplike (hasta+tip) ------------------#
 msg("Duplike (hasta+tip, libsize buyuk)...")
@@ -282,35 +216,3 @@ if (length(unique(num_df_counts$label)) < 2) fail("NUM dosyasinda tek sinif; yaz
 
 readr::write_csv(num_df_counts, out_NUM_counts)
 msg("Yazildi (NUM): ", out_NUM_counts)
-
-#------------------ (Opsiyonel) log1p + RPM ------------------#
-do_logrpm <- FALSE  # isterse TRUE yap
-if (do_logrpm) {
-  counts_mat <- as.matrix(ml_df_counts[, setdiff(names(ml_df_counts), c("Sample","label"))])
-  storage.mode(counts_mat) <- "numeric"
-  libsize_vec <- rowSums(counts_mat)
-  rpm <- sweep(counts_mat, 1, libsize_vec/1e6, "/"); rpm[!is.finite(rpm)] <- 0
-  log_rpm <- log1p(rpm)
-  
-  ml_df_logrpm <- cbind(ml_df_counts[c("Sample","label")], as.data.frame(log_rpm, check.names = FALSE))
-  readr::write_csv(ml_df_logrpm, out_with_sample_logrpm)
-  msg("Yazildi: ", out_with_sample_logrpm)
-  
-  num_df_logrpm <- ml_df_logrpm |>
-    dplyr::select(-Sample) |>
-    dplyr::relocate(label)
-  feat_cols2 <- setdiff(names(num_df_logrpm), "label")
-  num_df_logrpm[feat_cols2] <- lapply(num_df_logrpm[feat_cols2], function(x) as.numeric(x))
-  num_df_logrpm$label <- as.integer(num_df_logrpm$label)
-  num_df_logrpm[feat_cols2] <- lapply(num_df_logrpm[feat_cols2], function(x){ x[!is.finite(x)] <- 0; x[is.na(x)] <- 0; x })
-  readr::write_csv(num_df_logrpm, out_NUM_logrpm)
-  msg("Yazildi (NUM_logRPM): ", out_NUM_logrpm)
-}
-
-msg("Tamamlandi. Cikis dosyalari calistigin dizine yazildi: ")
-msg(" - ", out_with_sample_counts)
-msg(" - ", out_NUM_counts)
-if (exists("do_logrpm") && isTRUE(do_logrpm)) {
-  msg(" - ", out_with_sample_logrpm)
-  msg(" - ", out_NUM_logrpm)
-}
