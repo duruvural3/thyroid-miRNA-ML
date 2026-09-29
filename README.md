@@ -77,9 +77,8 @@ The R script used for TCGA-THCA data acquisition and preprocessing is available 
 
 The analysis code, computational environment, derived results, and publication figures associated with this study are permanently archived on Zenodo.
 
-**Version 1.0.0**  
-**DOI:** https://doi.org/10.5281/zenodo.23026954
-
+**Version 1.0.1**  
+**DOI:** https://doi.org/10.5281/zenodo.23044405
 ## Repository structure
 
 ```text
