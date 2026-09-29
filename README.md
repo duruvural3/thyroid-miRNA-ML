@@ -73,6 +73,13 @@ The Python environment can be recreated using the `environment.yml` file provide
 
 The R script used for TCGA-THCA data acquisition and preprocessing is available in the `R/` directory.
 
+## Archived release
+
+The analysis code, computational environment, derived results, and publication figures associated with this study are permanently archived on Zenodo.
+
+**Version 1.0.0**  
+**DOI:** https://doi.org/10.5281/zenodo.23026954
+
 ## Repository structure
 
 ```text
