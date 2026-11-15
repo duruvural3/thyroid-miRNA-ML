@@ -1,93 +1,32 @@
-# TCGA-THCA miRNA Machine Learning Analysis
+# TCGA-THCA: mature miRNA arm-level (3p/5p) analysis
 
-This repository contains the computational workflow used for the study:
+This folder contains the mature-arm extension of the TCGA-THCA miRNA machine-learning workflow. The original analysis files can remain unchanged in the parent repository.
 
-**Machine Learning-Based Identification of a 30-miRNA Candidate Biomarker Panel for Thyroid Cancer Using TCGA-THCA Data**
+## Files and order
 
-## Overview
+1. `01_TCGA_THCA_mature_arm_download.R` — retrieves TCGA-THCA miRNA-Seq **Isoform Expression Quantification** data for primary tumors and solid-tissue normals; keeps `mature,MIMAT...` isoforms; sums isomiR read counts by sample/MIMAT; maps MIMAT accessions to mature miRNA names using `miRBaseVersions.db` (miRBase v21); aggregates by mature miRNA name; selects one sample per patient and sample type (highest mature-miRNA library size); exports raw counts.
+2. `02_THCA_mature_arm_ML.ipynb` — reads the raw counts CSV, computes RPM and `log2(RPM + 1)`, filters low-expression mature miRNAs (RPM > 1 in at least 20% of samples), and evaluates classifiers with ANOVA/MI/mRMR feature selection (`k=30`), class-balance scenarios and patient-grouped cross-validation. It also writes feature-selection and TOPSIS summaries.
 
-This study investigates miRNA expression profiles from the TCGA-THCA cohort using machine-learning approaches to identify candidate miRNA biomarkers capable of distinguishing primary thyroid tumor samples from solid tissue normal samples.
+## Run
 
-The analysis includes:
+1. Run the R script in an R environment with **TCGAbiolinks**, **AnnotationDbi**, **miRBaseVersions.db**, **dplyr**, **tidyr**, **stringr**, **tibble**, and **readr** available. Some packages are installed automatically if missing.
+2. Keep the resulting `THCA_mature_miRNA_3p5p_unique_patients.csv` in **this folder**, or adjust `file_path` at the start of the notebook to point to its location.
+3. Start Jupyter with this folder as the working directory; then run `02_THCA_mature_arm_ML.ipynb`.
 
-- TCGA-THCA miRNA expression data processing
-- RPM normalization and log2(RPM+1) transformation
-- Low-expression filtering
-- Feature selection using ANOVA, mutual information (MI), and mRMR
-- Comparison of original unbalanced data, SMOTE, and random undersampling
-- Multiple machine-learning classifiers
-- Patient-grouped nested cross-validation
-- Performance evaluation using accuracy, F1-score, MCC, precision, recall, and ROC-AUC
-- TOPSIS-based model ranking
-- Selection of a 30-miRNA candidate biomarker panel
+Python packages used include `pandas`, `numpy`, `matplotlib`, `openpyxl`, `scikit-learn`, `imbalanced-learn`, and `mrmr-selection` (imported as `mrmr`). The notebook defines a 5-fold outer and 3-fold inner `StratifiedGroupKFold` for optimized models. Its scenarios are unbalanced, random undersampling, and SMOTE; its selectors are ANOVA, mutual information, and mRMR.
 
-## Data source
+## Data outputs
 
-miRNA expression data were obtained from the **TCGA-THCA** project through the National Cancer Institute Genomic Data Commons (GDC).
+The R script writes:
 
-Raw TCGA data are not redistributed in this repository.
+- `THCA_mature_miRNA_3p5p_unique_patients.csv` — sample ID, binary label and raw counts.
+- `THCA_mature_miRNA_3p5p_unique_patients_NUM.csv` — numeric-only matrix (no sample IDs).
+- `THCA_MIMAT_to_mature_miRNA_annotation.csv` — MIMAT/name annotation table.
 
-## Final model
+`label=1` indicates primary tumor; `label=0` indicates normal tissue.
 
-The final candidate miRNA panel was derived from the highest-ranking hyperparameter-optimized configuration:
+The Python notebook creates Excel results, feature-selection summaries, and PNG plots in its working directory. Input GDC data and generated results are not included in this package.
 
-**Unbalanced data + mRMR feature selection + AdaBoost**
+## Reproducibility note
 
-The model achieved:
-
-- Accuracy: 0.991
-- F1-score: 0.995
-- MCC: 0.954
-- Precision: 0.996
-- Recall: 0.994
-- ROC-AUC: 0.997
-- TOPSIS score: 0.951
-## Software environment
-
-The computational environment corresponding to the analysis reported in the manuscript is summarized below.
-
-### Python environment
-
-- Python 3.9.23
-- NumPy 2.0.2
-- pandas 2.3.1
-- scikit-learn 1.6.1
-- SciPy 1.13.1
-- imbalanced-learn 0.12.4
-- matplotlib 3.9.4
-- openpyxl 3.1.5
-- mrmr-selection 0.2.8
-
-The Python environment can be recreated using the `environment.yml` file provided in the root directory of this repository.
-
-### R environment
-
-- R 4.5.1
-- TCGAbiolinks 2.36.0
-- SummarizedExperiment 1.38.1
-- dplyr 1.1.4
-- stringr 1.5.2
-- tibble 3.3.0
-- readr 2.1.5
-- purrr 1.1.0
-
-The R script used for TCGA-THCA data acquisition and preprocessing is available in the `R/` directory.
-
-## Archived release
-
-The analysis code, computational environment, derived results, and publication figures associated with this study are permanently archived on Zenodo.
-
-**Version 1.0.1**  
-**DOI:** https://doi.org/10.5281/zenodo.23044405
-## Repository structure
-
-```text
-R/          TCGA data acquisition and preprocessing
-Python/     Machine-learning analysis
-results/    Derived analysis results
-Reproducibility
-Software versions and the computational environment required to reproduce the final analysis will be provided in the accompanying environment file.
-Data availability
-The underlying TCGA-THCA data are publicly available from the NCI Genomic Data Commons.
-License
-License information will be added prior to publication.
+The notebook has been checked for Python syntax, but this package has **not** been fully executed or scientifically validated against the revised manuscript. Re-run the workflow to confirm exact sample counts, retained features and result metrics. Preserve software/package versions and the GDC data download date for publication-grade reproducibility.
