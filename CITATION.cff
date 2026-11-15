@@ -3,7 +3,8 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it using the metadata below."
 title: "TCGA-THCA miRNA Machine-Learning Analysis"
 type: software
-version: 2.0.0
+version: 2.0.1
+doi: 10.5281/zenodo.24252272
 license: MIT
 
 authors:
@@ -16,9 +17,9 @@ authors:
 
 abstract: >-
   Computational workflows for TCGA-THCA miRNA expression-level
-  and mature miRNA arm-level (3p/5p) analyses, including
-  data acquisition and preprocessing, MIMAT-based isomiR
-  aggregation, feature selection, class-imbalance handling,
-  patient-grouped nested cross-validation, machine-learning
-  model evaluation, TOPSIS ranking, and identification of
-  candidate miRNA biomarkers for thyroid cancer.
+  and mature miRNA arm-level (3p/5p) analyses, including data
+  acquisition and preprocessing, MIMAT-based isomiR aggregation,
+  feature selection, class-imbalance handling, patient-grouped
+  nested cross-validation, machine-learning model evaluation,
+  TOPSIS ranking, and identification of candidate miRNA
+  biomarkers for thyroid cancer.
