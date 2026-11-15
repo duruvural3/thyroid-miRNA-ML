@@ -1,5 +1,7 @@
 # TCGA-THCA miRNA Machine Learning Analysis
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24252272.svg)](https://doi.org/10.5281/zenodo.24252272)
+
 This repository contains the computational workflows developed for the study:
 
 **Machine Learning-Based Identification of a 30-miRNA Candidate Biomarker Panel for Thyroid Cancer Using TCGA-THCA Data**
@@ -258,6 +260,12 @@ Raw sequencing data are not redistributed in this repository.
 
 This repository is distributed under the terms specified in the `LICENSE` file.
 
+
 ## 8. Citation
 
-Citation information and the associated repository DOI will be provided following the assignment of the corresponding research software release.
+If you use the computational workflows provided in this repository, please cite:
+
+Vural, D., Köroğlu, S. M., & İzzetoğlu, S. (2026).
+*TCGA-THCA miRNA Machine-Learning Analysis* (Version 2.0.1).
+Zenodo. https://doi.org/10.5281/zenodo.24252272
+
