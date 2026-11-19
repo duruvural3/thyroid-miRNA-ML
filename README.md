@@ -1,6 +1,6 @@
 TCGA-THCA miRNA Machine Learning Analysis
 
-DOI
+DOI: 10.5281/zenodo.24376612
 
 This repository contains the computational workflows developed for the study:
 
@@ -227,4 +227,4 @@ This repository is distributed under the terms specified in the LICENSE file.
 
 If you use the computational workflows provided in this repository, please cite:
 
-Vural, D., Köroğlu, S. M., & İzzetoğlu, S. (2026). TCGA-THCA miRNA Machine-Learning Analysis 
+Vural, D., Köroğlu, S. M., & İzzetoğlu, S. (2026). v2.0.2– TCGA-THCA miRNA Machine-Learning Analysis
