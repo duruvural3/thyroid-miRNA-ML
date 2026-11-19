@@ -3,8 +3,8 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it using the metadata below."
 title: "TCGA-THCA miRNA Machine-Learning Analysis"
 type: software
-version: 2.0.1
-doi: 10.5281/zenodo.24252272
+version: 2.0.3
+DOI: 10.5281/zenodo.24377294
 license: MIT
 
 authors:
